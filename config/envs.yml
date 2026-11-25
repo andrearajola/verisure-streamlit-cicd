@@ -12,3 +12,4 @@ dev:
   compute_pool: SYSTEM_COMPUTE_POOL_CPU   # shared by all apps (no pool per team)
   pypi_eai: ""                      # no external access integration: apps can't install packages
   create_schema: true               # the pipeline role creates the team schema + stage if missing
+  viewer_roles: [AZ-SF-BIGROUP-DBA] # can open every app in this environment (pilot)
