@@ -1,0 +1,34 @@
+name: Connection test
+
+# Manual only: checks that GitHub Actions can log in to the Verisure DEV account with OIDC
+# (service user SVC_STREAMLIT_CICD_DEV, no secrets) and shows what the pipeline role can see.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: BL35257-BI_GROUP_DEV   # account identifier is not a secret
+
+jobs:
+  connection-test:
+    runs-on: ubuntu-latest
+    environment: dev   # OIDC subject: repo:<owner>/<repo>:environment:dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Set up Snowflake CLI (OIDC)
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+      - name: Test the connection
+        run: snow connection test -x
+      - name: Who am I
+        run: snow sql -x -q "SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()"
+      - name: What the pipeline role can use
+        run: |
+          snow sql -x -q "SHOW DATABASES;"
+          snow sql -x -q "SHOW WAREHOUSES;"
+          snow sql -x -q "SHOW COMPUTE POOLS;"
