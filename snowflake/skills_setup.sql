@@ -47,8 +47,9 @@ DECLARE
   v_to     STRING;
   rs       RESULTSET;
 BEGIN
-  v_skill := REPLACE(REPLACE(REPLACE(P_SKILL, '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
-  v_desc  := REPLACE(REPLACE(REPLACE(COALESCE(P_DESC, '-'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+  -- HTML-escape (CHR(38) = ampersand: the Snowflake CLI treats a literal one as variable syntax)
+  v_skill := REPLACE(REPLACE(REPLACE(P_SKILL, CHR(38), CHR(38) || 'amp;'), '<', CHR(38) || 'lt;'), '>', CHR(38) || 'gt;');
+  v_desc  := REPLACE(REPLACE(REPLACE(COALESCE(P_DESC, '-'), CHR(38), CHR(38) || 'amp;'), '<', CHR(38) || 'lt;'), '>', CHR(38) || 'gt;');
   v_subj  := 'Skill ' || P_SKILL || ' - new DEV version available';
   v_html  := '<h3>New version of the skill <code>' || v_skill || '</code> (DEV)</h3>' ||
              '<p><b>Description:</b> ' || v_desc || '</p>' ||
