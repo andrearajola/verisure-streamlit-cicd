@@ -1,0 +1,50 @@
+name: Sync skills
+
+# push dev -> changed skills published to DB_STREAMLIT.SKILLS_DEV ("[DEV]", READ to <SKILL>_SKILL_DEV)
+#             + release email to config/envs.yml skill_notify.
+# The objects and procedures (snowflake/skills_setup.sql) are (re)created by the pipeline role first.
+on:
+  push:
+    branches: [dev]
+    paths: ['skills/**', 'ci/sync_skills.py', 'snowflake/skills_setup.sql', '.github/workflows/sync-skills.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}   # repo variable (account identifier)
+
+# One sync at a time (the deploy state is per branch)
+concurrency:
+  group: skill-sync-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./ci/validate_skills.sh
+
+  sync:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: dev   # OIDC subject: repo:<owner>/<repo>:environment:dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml==6.0.2
+      - name: Set up Snowflake CLI (OIDC)
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+      - name: Skill objects and procedures (idempotent)
+        run: snow sql -x --role STREAMLIT_CICD_DEV --warehouse VWH_STREAMLIT -f snowflake/skills_setup.sql -D db=DB_STREAMLIT
+      - name: Upload skills and sync
+        run: python ci/sync_skills.py --env dev --commit "$GITHUB_SHA"
