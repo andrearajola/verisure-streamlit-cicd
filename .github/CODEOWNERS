@@ -1,0 +1,6 @@
+# Platform team reviews changes to the rules, the pipeline and the Snowflake setup
+/skills/streamlit-app-standards/  @andrearajola
+/config/                          @andrearajola
+/ci/                              @andrearajola
+/.github/                         @andrearajola
+/snowflake/                       @andrearajola

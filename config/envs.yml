@@ -1,0 +1,14 @@
+# Deployment environments. One entry per Snowflake environment.
+# Pilot: only the Verisure DEV account (repo variable SNOWFLAKE_ACCOUNT). PRD is added when there is a PRD
+# account or database.
+#
+# Pilot setup (snowflake/00_admin_setup.sql): ONE pipeline role owns the database, every app runs on
+# the shared compute pool, and there is no PyPI access integration (requirements.txt must be empty).
+dev:
+  branch: dev                       # git branch that deploys here
+  github_environment: dev           # GitHub environment (OIDC subject: environment:dev)
+  database: DB_STREAMLIT
+  deploy_role: STREAMLIT_CICD_DEV   # one role creates and owns every app (no <TEAM>_STREAMLIT_OWNER roles)
+  compute_pool: SYSTEM_COMPUTE_POOL_CPU   # shared by all apps (no pool per team)
+  pypi_eai: ""                      # no external access integration: apps can't install packages
+  create_schema: true               # the pipeline role creates the team schema + stage if missing

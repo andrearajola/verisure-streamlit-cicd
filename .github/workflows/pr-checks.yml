@@ -1,0 +1,90 @@
+name: PR checks
+
+# Required checks on every pull request into dev or main (branch protection blocks the merge):
+#   app-checks   -> Streamlit standards checklist (the SAME script the streamlit-app-standards skill runs)
+#                   + its unit tests. On failure the PR gets one comment listing what failed and how to fix it.
+#   skill-checks -> every skills/<name>/SKILL.md has name + description.
+# No path filters on purpose: a required check that never runs would leave the PR pending forever.
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write   # post / update the checklist comment
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  app-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml==6.0.2 pytest==8.3.4
+
+      - name: Unit tests of the checklist
+        run: python -m pytest ci/tests -q
+
+      - name: Run the Streamlit standards checklist
+        id: checklist
+        env:
+          # Untrusted values: passed as env vars, never interpolated into the script
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          if grep -qE '^(skills/streamlit-app-standards/|config/teams.yml)' <<<"$changed"; then
+            # The rules or the teams changed: every app must still pass
+            apps=$(find apps -mindepth 2 -maxdepth 2 -type d 2>/dev/null | sort)
+          else
+            apps=$(grep -E '^apps/[^/]+/[^/]+/' <<<"$changed" | cut -d/ -f1-3 | sort -u || true)
+          fi
+          echo "Apps to check: ${apps:-none}"
+          set +e
+          # shellcheck disable=SC2086
+          python skills/streamlit-app-standards/scripts/check_streamlit_app.py $apps \
+            --head-branch "$HEAD_REF" --base-branch "$BASE_REF" \
+            --markdown report.md --json report.json
+          rc=$?
+          set -e
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Comment the result on the pull request
+        if: always() && steps.checklist.outputs.rc != ''
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- streamlit-standards-report -->';
+            const body = fs.readFileSync('report.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const mine = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Block the merge if the checklist failed
+        if: steps.checklist.outputs.rc != '0'
+        run: |
+          echo "::error::Streamlit standards checklist FAILED - see the PR comment for what to fix"
+          exit 1
+
+  skill-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate SKILL.md files
+        run: ./ci/validate_skills.sh

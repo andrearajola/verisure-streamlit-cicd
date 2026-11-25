@@ -1,0 +1,28 @@
+name: Demo data
+
+# Manual only: creates the test tables used by the sample apps (snowflake/90_demo_data.sql),
+# with the pipeline role, inside DB_STREAMLIT. Safe to re-run (CREATE OR REPLACE).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}   # repo variable (account identifier)
+
+jobs:
+  demo-data:
+    runs-on: ubuntu-latest
+    environment: dev   # OIDC subject: repo:<owner>/<repo>:environment:dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Snowflake CLI (OIDC)
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+      - name: Create the test data
+        run: snow sql -x -f snowflake/90_demo_data.sql

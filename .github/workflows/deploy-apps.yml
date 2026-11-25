@@ -1,0 +1,102 @@
+name: Deploy Streamlit apps
+
+# push dev  -> changed apps deployed to the Verisure DEV account (database DB_STREAMLIT)
+# PRD is added when there is a PRD account or database (config/envs.yml + a "prd" GitHub environment).
+# Manual run: choose the environment and optionally one app (empty = every app).
+# Each deploy runs AS the pipeline role, on the shared compute pool + team warehouse (ci/deploy_app.py).
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "environment"
+        type: choice
+        options: [dev]
+        default: dev
+      app:
+        description: "apps/<team>/<app_name> (empty = all apps)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}   # repo variable (account identifier)
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.plan.outputs.environment }}
+      apps: ${{ steps.plan.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+          BEFORE: ${{ github.event.before }}
+          IN_ENV: ${{ inputs.environment }}
+          IN_APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          all_apps() { find apps -mindepth 2 -maxdepth 2 -type d | sort; }
+          if [[ $EVENT == workflow_dispatch ]]; then
+            environment=$IN_ENV
+            if [[ -n $IN_APP ]]; then
+              [[ $IN_APP =~ ^apps/[a-z0-9_]+/[a-z0-9_]+$ && -d $IN_APP ]] || { echo "::error::app '$IN_APP' not found"; exit 1; }
+              apps=$IN_APP
+            else
+              apps=$(all_apps)
+            fi
+          else
+            case $REF in dev) environment=dev ;; *) echo "::error::branch $REF is not deployed"; exit 1 ;; esac
+            if [[ $BEFORE =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              apps=$(all_apps)          # new branch or force-push: deploy everything
+            else
+              apps=$(git diff --name-only "$BEFORE" HEAD | grep -E '^apps/[^/]+/[^/]+/' | cut -d/ -f1-3 | sort -u || true)
+              apps=$(for a in $apps; do [[ -d $a ]] && echo "$a"; done)   # skip deleted apps
+            fi
+          fi
+          json=$(printf '%s\n' $apps | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+          echo "apps=$json" >> "$GITHUB_OUTPUT"
+          { echo "### Deploy plan"; echo "- environment: \`$environment\`"; echo "- apps: \`$json\`"; } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.plan.outputs.environment }}   # OIDC subject: repo:<owner>/<repo>:environment:<env>
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: deploy-${{ needs.plan.outputs.environment }}-${{ matrix.app }}
+      cancel-in-progress: false
+    # No max-parallel: every app job starts at once, so ONE prd approval covers the whole release
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml==6.0.2
+      - name: Set up Snowflake CLI (OIDC)
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+      - name: Test the connection
+        run: snow connection test -x
+      - name: Deploy and verify
+        env:
+          APP: ${{ matrix.app }}
+          ENVIRONMENT: ${{ needs.plan.outputs.environment }}
+        run: python ci/deploy_app.py --env "$ENVIRONMENT" --app "$APP" --commit "$GITHUB_SHA"

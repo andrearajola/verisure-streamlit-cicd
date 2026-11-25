@@ -1,0 +1,15 @@
+# Teams that can deploy Streamlit apps. The CI/CD reads this file:
+#   apps/<team folder>/<app>/  ->  schema <TEAM> in the environment database.
+# A new team is added here through a feature/platform-... pull request.
+#
+# allowed_rights: which access models the team may use (owner = owner's rights, caller = restricted
+#   caller's rights). Pilot: owner only, because caller's rights needs MANAGE CALLER GRANTS.
+# warehouse: query warehouse for the team's apps.
+FINANCE:
+  folder: finance
+  allowed_rights: [owner]
+  warehouse: VWH_STREAMLIT
+COMERCIAL:
+  folder: comercial
+  allowed_rights: [owner]
+  warehouse: VWH_STREAMLIT

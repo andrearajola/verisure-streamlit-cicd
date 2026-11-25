@@ -1,0 +1,21 @@
+-- Test data for the sample apps, created by the pipeline role inside DB_STREAMLIT
+-- (run by the "Demo data" workflow). Not needed once the apps read real Verisure data.
+CREATE SCHEMA IF NOT EXISTS DB_STREAMLIT.DEMO_DATA COMMENT = 'Test data for the Streamlit CI/CD pilot';
+
+CREATE OR REPLACE TABLE DB_STREAMLIT.DEMO_DATA.SALES AS
+SELECT * FROM VALUES
+  ('ES', '2026-09', 1200), ('ES', '2026-10', 1350), ('ES', '2026-11', 1410),
+  ('PT', '2026-09',  500), ('PT', '2026-10',  560), ('PT', '2026-11',  610),
+  ('FR', '2026-09',  950), ('FR', '2026-10',  900), ('FR', '2026-11', 1020)
+  AS t(COUNTRY, MONTH, AMOUNT);
+
+CREATE OR REPLACE TABLE DB_STREAMLIT.DEMO_DATA.ORDERS AS
+SELECT * FROM VALUES
+  ('Norte',  'Online', 320,  48000), ('Norte',  'Tienda', 210, 39000),
+  ('Centro', 'Online', 410,  61500), ('Centro', 'Tienda', 280, 52000),
+  ('Sur',    'Online', 190,  27500), ('Sur',    'Tienda', 240, 41000)
+  AS t(REGION, CHANNEL, ORDERS, REVENUE);
+
+SELECT 'SALES' AS table_name, COUNT(*) AS row_count FROM DB_STREAMLIT.DEMO_DATA.SALES
+UNION ALL
+SELECT 'ORDERS', COUNT(*) FROM DB_STREAMLIT.DEMO_DATA.ORDERS;

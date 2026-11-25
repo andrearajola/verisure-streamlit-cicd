@@ -1,0 +1,90 @@
+# Streamlit app standards - single source of truth.
+# Read by scripts/check_streamlit_app.py, which runs in two places:
+#   1. Locally, from this skill, while CoCo helps a developer build the app.
+#   2. In GitHub Actions on every pull request (required check: the PR is blocked on any error).
+# severity: error (blocks the PR) | warning (reported, does not block). Set enabled: false to switch a rule off.
+version: 1
+
+rules:
+  APP001:
+    title: App folder follows apps/<team>/<app_name>
+    severity: error
+    fix: Move the app to apps/<team folder>/<app_name>, with app_name in snake_case (a-z, 0-9, _), 3-40 characters.
+  APP002:
+    title: Team exists in config/teams.yml
+    severity: error
+    fix: Use a team folder listed in config/teams.yml, or ask the platform team to onboard your team.
+  APP003:
+    title: app.yml exists and is valid YAML
+    severity: error
+    fix: Add app.yml next to streamlit_app.py (copy the template from the skill).
+  APP004:
+    title: app.yml has the required fields
+    severity: error
+    required: [name, title, description, owner_email, rights]
+    fix: Fill in name, title, description, owner_email and rights in app.yml.
+  APP005:
+    title: app.yml name matches the folder name
+    severity: error
+    fix: Set name in app.yml to the folder name (it becomes the Streamlit object name).
+  APP006:
+    title: Access model (rights) is allowed for the team
+    severity: error
+    fix: Set rights to one of the values allowed for your team in config/teams.yml (owner or caller).
+  APP007:
+    title: owner_email is a valid email
+    severity: error
+    fix: Set owner_email to the email of the person responsible for the app.
+  APP008:
+    title: viewers are valid role names
+    severity: error
+    fix: List viewer roles as plain identifiers (letters, digits, _). The team USERS role already sees every app.
+  APP009:
+    title: Entry point streamlit_app.py exists
+    severity: error
+    fix: Name the main file streamlit_app.py at the root of the app folder.
+  APP010:
+    title: requirements.txt exists, every package pinned, streamlit not listed
+    severity: error
+    fix: Add requirements.txt with exact versions (package==1.2.3). Do not list streamlit, the container image already has it.
+  APP011:
+    title: No get_active_session or _snowflake (container runtime)
+    severity: error
+    fix: Use conn = st.connection("snowflake") and conn.session(). get_active_session is not thread-safe on a compute pool.
+  APP012:
+    title: No USE ROLE / USE WAREHOUSE in the app
+    severity: error
+    fix: Remove USE ROLE / USE WAREHOUSE. The role is the app owner (or the viewer) and the warehouse is set by the CI/CD.
+  APP013:
+    title: No hardcoded credentials or account URLs
+    severity: error
+    fix: Remove passwords, tokens, private keys and account URLs. The app connection needs no credentials; use Snowflake secrets if you call an external API.
+  APP014:
+    title: Uses st.connection
+    severity: error
+    fix: Open the Snowflake connection with st.connection("snowflake") or st.connection("snowflake-callers-rights").
+  APP015:
+    title: Caller's rights rules
+    severity: error
+    fix: With rights caller, open st.connection("snowflake-callers-rights") at the top of the script (not inside a function, if or page), and cache its data with @st.cache_data(scope="session").
+  APP016:
+    title: README.md exists
+    severity: warning
+    fix: Add a short README.md (what the app does, data used, who to contact).
+  APP017:
+    title: File size limits
+    severity: error
+    max_file_kb: 1024
+    max_total_kb: 10240
+    fix: Keep each file under 1 MB and the app under 10 MB. Read large data from Snowflake, do not ship it in the repo.
+  APP018:
+    title: Avoid SELECT *
+    severity: warning
+    fix: Select only the columns the app needs (less data, faster, and safer when columns are added).
+  BR001:
+    title: Branch naming
+    severity: error
+    feature_prefixes: [feature, fix]
+    platform_scopes: [platform]      # CI/CD, rules or config changes that belong to no team
+    sync_from_main: true             # allow PR main -> dev (sync dev after a release)
+    fix: Open PRs into dev from feature/<team>-<short-description> (or fix/..., or feature/platform-... for CI/CD changes). PRs into main only come from dev.

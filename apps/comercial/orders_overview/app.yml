@@ -1,0 +1,6 @@
+name: orders_overview
+title: Orders overview
+description: Orders and revenue by region and channel (same numbers for every viewer).
+owner_email: a.rajolapescarini@snowflake.com
+rights: owner           # owner's rights: the app owner role reads the data
+viewers: []
