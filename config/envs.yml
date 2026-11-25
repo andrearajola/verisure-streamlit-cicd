@@ -13,3 +13,6 @@ dev:
   pypi_eai: ""                      # no external access integration: apps can't install packages
   create_schema: true               # the pipeline role creates the team schema + stage if missing
   viewer_roles: [AZ-SF-BIGROUP-DBA] # can open every app in this environment (pilot)
+  # Skill CI/CD: release email on every new skill version (addresses must be in the
+  # SKILLS_EMAIL_INT ALLOWED_RECIPIENTS list)
+  skill_notify: [andrea.rajola@external.verisure.com]
