@@ -1,0 +1,47 @@
+name: Permissions check
+
+# Manual only: checks, AS the pipeline role, the admin setup for the skill CI/CD in DEV
+# (email integration + skill role) and optionally sends one test email.
+on:
+  workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Send a test email to this address (must be in ALLOWED_RECIPIENTS)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}   # repo variable (account identifier)
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: dev   # OIDC subject: repo:<owner>/<repo>:environment:dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Set up Snowflake CLI (OIDC)
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+      - name: Who am I
+        run: snow sql -x -q "SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()"
+      - name: Email integration (exists + the pipeline role can use it)
+        run: |
+          snow sql -x -q "SHOW INTEGRATIONS LIKE 'SKILLS_EMAIL_INT';"
+          snow sql -x -q "DESCRIBE INTEGRATION SKILLS_EMAIL_INT;"
+      - name: Skill role exists
+        run: snow sql -x -q "SHOW ROLES LIKE 'STREAMLIT_APP_STANDARDS_SKILL_DEV';"
+      - name: Send a test email
+        if: inputs.test_email != ''
+        env:
+          TO: ${{ inputs.test_email }}
+        run: |
+          [[ $TO =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] || { echo "::error::invalid email address"; exit 1; }
+          snow sql -x -q "CALL SYSTEM\$SEND_SNOWFLAKE_NOTIFICATION(
+            SNOWFLAKE.NOTIFICATION.TEXT_PLAIN('Test email from the Streamlit / Skill CI/CD pilot (GitHub Actions, DEV).'),
+            SNOWFLAKE.NOTIFICATION.EMAIL_INTEGRATION_CONFIG('SKILLS_EMAIL_INT', 'CI/CD pilot - test email', ARRAY_CONSTRUCT('$TO')));"
