@@ -16,6 +16,7 @@ Optional settings per environment in config/envs.yml (default = one role and one
   compute_pool   one compute pool shared by every app
   pypi_eai       external access integration for PyPI; "" = none (requirements.txt must be empty)
   create_schema  true = the deploy role creates the team schema and stage if missing
+  viewer_roles   roles that can open every app of the environment (names with '-' are quoted)
 
 Snowflake connection: SNOW_CONN_ARGS (default "-x": temporary connection from SNOWFLAKE_* env vars,
 which snowflakedb/snowflake-actions sets with OIDC). Locally: SNOW_CONN_ARGS="-c <connection>".
@@ -39,6 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "skills" / "streamlit-app-standards" / "scripts" / "check_streamlit_app.py"
 RUNTIME = "SYSTEM$ST_CONTAINER_RUNTIME_PY3_11"
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+ROLE_NAME = re.compile(r"^[A-Za-z0-9_$-]{1,255}$")   # roles from SSO/SCIM can contain '-'
 SUMMARY: list[str] = []
 
 
@@ -51,6 +53,17 @@ def ident(value: str, what: str) -> str:
     if not IDENT.match(value or ""):
         sys.exit(f"invalid {what}: {value!r}")
     return value.upper()
+
+
+def role_name(value: str, what: str) -> str:
+    if not ROLE_NAME.match(value or ""):
+        sys.exit(f"invalid {what}: {value!r}")
+    return value.upper()
+
+
+def role_sql(name: str) -> str:
+    """Role name as a SQL identifier: quoted when it is not a plain identifier (e.g. AZ-SF-...)."""
+    return name if IDENT.match(name) else f'"{name}"'
 
 
 def sql_str(value: str) -> str:
@@ -136,6 +149,9 @@ def main() -> int:
     if not eai and a.verify_only is False and _has_packages(app_dir):
         sys.exit(f"{a.env} has no PyPI access (envs.yml pypi_eai is empty): requirements.txt must be empty")
     viewers = [ident(str(v), "viewer role") for v in (meta.get("viewers") or [])]
+    # envs.yml viewer_roles: roles that can open every app of this environment
+    viewers += [r for r in (role_name(str(v), "viewer role") for v in (env.get("viewer_roles") or []))
+                if r not in viewers]
     rights = str(meta.get("rights", "owner")).lower()
     commit = re.sub(r"[^0-9a-zA-Z]", "", a.commit)[:40] or "local"
     fqn = f"{db}.{team}.{app}"
@@ -148,7 +164,8 @@ def main() -> int:
         run_checklist(app_dir)
         if env.get("create_schema"):
             snow.run(f"CREATE SCHEMA IF NOT EXISTS {db}.{team};\nCREATE STAGE IF NOT EXISTS {db}.{team}.APP_SRC;")
-        deploy(snow, app_dir, fqn, db, team, app, pool, wh, eai, viewers, meta, rights, commit)
+        deploy(snow, app_dir, fqn, db, team, app, pool, wh, eai, viewers, meta, rights, commit,
+               grant_containers=bool(env.get("deploy_role")))
     problems = verify(snow, fqn, db, team, app, owner_role, users_role, pool, wh, viewers, rights, commit,
                       check_commit=not a.verify_only)
     if problems:
@@ -171,7 +188,8 @@ def _has_packages(app_dir: Path) -> bool:
     return any(l.split("#")[0].strip() for l in req.read_text(encoding="utf-8").splitlines())
 
 
-def deploy(snow, app_dir, fqn, db, team, app, pool, wh, eai, viewers, meta, rights, commit) -> None:
+def deploy(snow, app_dir, fqn, db, team, app, pool, wh, eai, viewers, meta, rights, commit,
+           grant_containers=False) -> None:
     # 1. Upload this commit's files to the team stage (one folder per app and commit)
     stage = f"@{db}.{team}.APP_SRC/{app.lower()}/{commit[:12]}"
     files = [p for p in sorted(app_dir.rglob("*")) if p.is_file()]
@@ -205,9 +223,13 @@ def deploy(snow, app_dir, fqn, db, team, app, pool, wh, eai, viewers, meta, righ
         ]))
         log("- updated the app in place (new version, same URL, grants kept)")
 
-    # 3. Extra viewers from app.yml
+    # 3. Viewers (app.yml viewers + envs.yml viewer_roles). Opening an app also needs USAGE on its
+    #    database and schema: granted here when the deploy role owns them (single-role setup).
     for v in viewers:
-        snow.run(f"GRANT USAGE ON STREAMLIT {fqn} TO ROLE {v};")
+        r = role_sql(v)
+        stmts = [f"GRANT USAGE ON DATABASE {db} TO ROLE {r};", f"GRANT USAGE ON SCHEMA {db}.{team} TO ROLE {r};"] \
+            if grant_containers else []
+        snow.run("\n".join(stmts + [f"GRANT USAGE ON STREAMLIT {fqn} TO ROLE {r};"]))
     if viewers:
         log(f"- granted USAGE to {', '.join(viewers)}")
 
