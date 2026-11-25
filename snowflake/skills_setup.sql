@@ -138,9 +138,10 @@ BEGIN
       SELECT COUNT(*) INTO :v_nrole FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
       v_alias := 'G' || UPPER(LEFT(P_COMMIT, 7));
 
-      -- SKILL.md exists and its front-matter has name + description
+      -- SKILL.md exists and its front-matter has name + description (first description: line in the file)
       v_sql := 'SELECT COUNT_IF(STARTSWITH(TRIM($1), ''name:'')) * COUNT_IF(STARTSWITH(TRIM($1), ''description:'')), ' ||
-               'MIN(IFF(STARTSWITH(TRIM($1), ''description:''), TRIM(SUBSTR(TRIM($1), 13), '' "''''''), NULL)) ' ||
+               'MIN_BY(IFF(STARTSWITH(TRIM($1), ''description:''), TRIM(SUBSTR(TRIM($1), 13), '' "''''''), NULL), ' ||
+               'IFF(STARTSWITH(TRIM($1), ''description:''), METADATA$FILE_ROW_NUMBER, NULL)) ' ||
                'FROM ' || v_src || 'SKILL.md (FILE_FORMAT => ''<% db %>.SKILLS_CICD.FF_SKILL_TEXT'')';
       EXECUTE IMMEDIATE :v_sql;
       SELECT $1, LEFT(REPLACE($2, '''', ''''''), 1000) INTO :v_ok, :v_desc FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
@@ -190,7 +191,7 @@ BEGIN
             v_status := 'DEPLOYED'; v_msg := 'new version';
           END IF;
         END IF;
-        -- Reader grant every time (idempotent): also repairs a grant removed by hand
+        -- Reader grants every time (idempotent): also repairs a grant removed by hand
         v_sql := 'GRANT READ ON CORTEX EXTENSION ' || v_ext || ' TO ROLE ' || v_reader;
         EXECUTE IMMEDIATE :v_sql;
 
@@ -199,6 +200,26 @@ BEGIN
           CALL <% db %>.SKILLS_CICD.SP_SKILL_NOTIFY(:v_ext, :P_SKILL, :v_desc, :P_COMMIT, :P_TO) INTO :v_mail;
           v_msg := v_msg || ', READ to ' || v_reader || ', notified (' || v_mail || ')';
         END IF;
+      END IF;
+    END IF;
+
+    -- Every run, also for unchanged skills: the reader role needs USAGE on the database and schema
+    -- (owned by the pipeline role) to reach the skill, plus READ on it.
+    IF (v_nfiles > 0) THEN
+      v_sql := 'SHOW ROLES LIKE ''' || v_reader || '''';
+      EXECUTE IMMEDIATE :v_sql;
+      SELECT COUNT(*) INTO :v_nrole FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+      v_sql := 'SHOW CORTEX EXTENSIONS LIKE ''' || v_name || ''' IN SCHEMA ' || v_schema;
+      EXECUTE IMMEDIATE :v_sql;
+      SELECT COUNT(*) INTO :v_exists FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+      IF (v_nrole > 0 AND v_exists > 0) THEN
+        v_sql := 'GRANT USAGE ON DATABASE <% db %> TO ROLE ' || v_reader;
+        EXECUTE IMMEDIATE :v_sql;
+        v_sql := 'GRANT USAGE ON SCHEMA ' || v_schema || ' TO ROLE ' || v_reader;
+        EXECUTE IMMEDIATE :v_sql;
+        v_sql := 'GRANT READ ON CORTEX EXTENSION ' || v_ext || ' TO ROLE ' || v_reader;
+        EXECUTE IMMEDIATE :v_sql;
+        IF (v_status = 'SKIP') THEN v_msg := v_msg || ', grants for ' || v_reader || ' checked'; END IF;
       END IF;
     END IF;
 
