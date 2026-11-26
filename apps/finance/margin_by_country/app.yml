@@ -1,5 +1,6 @@
 name: margin_by_country
 title: Margin by country
-description: Sales margin per country.
-rights: caller
+description: Sales and estimated margin per country (same numbers for every viewer).
+owner_email: a.rajolapescarini@snowflake.com
+rights: owner           # owner's rights: the app owner role reads the data
 viewers: []
