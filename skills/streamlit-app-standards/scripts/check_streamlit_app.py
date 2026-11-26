@@ -182,6 +182,7 @@ class Checker:
         # APP010 requirements
         req = app_dir / "requirements.txt"
         d = []
+        allow_packages = self.rule("APP010").get("allow_packages", True)
         if not req.is_file():
             d.append("requirements.txt not found")
         else:
@@ -190,7 +191,9 @@ class Checker:
                 if not line:
                     continue
                 pkg = re.split(r"[\[=<>!~; ]", line, maxsplit=1)[0].lower()
-                if pkg == "streamlit":
+                if not allow_packages:
+                    d.append(f"line {n}: '{line}': no PyPI access in this environment, requirements.txt must be empty")
+                elif pkg == "streamlit":
                     d.append(f"line {n}: do not list streamlit (the container runtime provides it)")
                 elif not PIN_RE.match(line):
                     d.append(f"line {n}: '{line}' is not pinned with ==")

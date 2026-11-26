@@ -31,3 +31,5 @@ Snowflake account: Verisure DEV (GitHub repo variable `SNOWFLAKE_ACCOUNT`), data
 | `.github/workflows/` | `pr-checks`, `deploy-apps`, `demo-data` (manual), `connection-test` (manual) |
 | `snowflake/00_admin_setup.sql` | one-time admin setup (already run) |
 | `snowflake/90_demo_data.sql` | test data for the sample apps |
+| `demo/DEMO.md`, `demo/reference/` | demo script (Snowsight + VS Code) and reference code; never deployed |
+| `requirements-dev.txt`, `.vscode/` | local checklist and tests in VS Code |
