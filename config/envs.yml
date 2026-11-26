@@ -16,3 +16,5 @@ dev:
   # Skill CI/CD: release email on every new skill version (addresses must be in the
   # SKILLS_EMAIL_INT ALLOWED_RECIPIENTS list)
   skill_notify: [andrea.rajola@external.verisure.com]
+  # Extra roles that can use every DEV skill (the CI/CD grants READ on each sync)
+  skill_reader_roles: [SF-SNOWFLAKETM-FINANCE-STREAMLIT-ENGINEER, SF-SNOWFLAKETM-COMERCIAL-STREAMLIT-ENGINEER]

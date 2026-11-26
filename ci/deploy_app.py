@@ -150,8 +150,11 @@ def main() -> int:
         sys.exit(f"{a.env} has no PyPI access (envs.yml pypi_eai is empty): requirements.txt must be empty")
     viewers = [ident(str(v), "viewer role") for v in (meta.get("viewers") or [])]
     # envs.yml viewer_roles: roles that can open every app of this environment
-    viewers += [r for r in (role_name(str(v), "viewer role") for v in (env.get("viewer_roles") or []))
-                if r not in viewers]
+    # teams.yml viewer_roles: roles that can open every app of this team (e.g. the domain's engineers)
+    for extra in (env.get("viewer_roles") or []) + (team_cfg.get("viewer_roles") or []):
+        r = role_name(str(extra), "viewer role")
+        if r not in viewers:
+            viewers.append(r)
     rights = str(meta.get("rights", "owner")).lower()
     commit = re.sub(r"[^0-9a-zA-Z]", "", a.commit)[:40] or "local"
     fqn = f"{db}.{team}.{app}"
