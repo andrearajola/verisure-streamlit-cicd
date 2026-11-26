@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from deploy_app import Snow, ident, load_yaml, sql_str  # noqa: E402
+from deploy_app import Snow, ident, load_yaml, role_name, role_sql, sql_str  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 EMAIL = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$")
@@ -56,6 +56,20 @@ def main() -> int:
     rows = snow.run(f"CALL {db}.SKILLS_CICD.SP_SKILL_SYNC_ALL({sql_str(branch)}, {sql_str(a.commit)}, "
                     f"{sql_str(','.join(notify))});")
     out = next(iter(rows[0].values())) if rows else "no result"
+
+    # envs.yml skill_reader_roles: extra roles that can use every skill of this environment
+    # (READ on the skill + USAGE on the database and schema; the pipeline role owns them all)
+    readers = [role_name(str(r), "skill reader role") for r in (env.get("skill_reader_roles") or [])]
+    if readers:
+        exts = snow.run(f"SHOW CORTEX EXTENSIONS IN SCHEMA {db}.SKILLS_DEV;") or []
+        stmts = []
+        for r in readers:
+            stmts += [f"GRANT USAGE ON DATABASE {db} TO ROLE {role_sql(r)};",
+                      f"GRANT USAGE ON SCHEMA {db}.SKILLS_DEV TO ROLE {role_sql(r)};"]
+            stmts += [f"GRANT READ ON CORTEX EXTENSION {db}.SKILLS_DEV.{ident(e['name'], 'skill')} TO ROLE {role_sql(r)};"
+                      for e in exts]
+        snow.run("\n".join(stmts))
+        out += f"skill readers: {', '.join(readers)} ({len(exts)} skill(s))\n"
     print(out)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

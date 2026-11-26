@@ -5,11 +5,14 @@
 # allowed_rights: which access models the team may use (owner = owner's rights, caller = restricted
 #   caller's rights). Pilot: owner only, because caller's rights needs MANAGE CALLER GRANTS.
 # warehouse: query warehouse for the team's apps.
+# viewer_roles: roles that can open every app of the team (the CI/CD grants them on each deploy).
 FINANCE:
   folder: finance
   allowed_rights: [owner]
   warehouse: VWH_STREAMLIT
+  viewer_roles: [SF-SNOWFLAKETM-FINANCE-STREAMLIT-ENGINEER]
 COMERCIAL:
   folder: comercial
   allowed_rights: [owner]
   warehouse: VWH_STREAMLIT
+  viewer_roles: [SF-SNOWFLAKETM-COMERCIAL-STREAMLIT-ENGINEER]
