@@ -79,8 +79,14 @@ def make_app(root: Path, team="finance", name="good_app", rights="caller", code=
     return d
 
 
-def run(root: Path, apps=(), head="", base=""):
-    args = ["--repo-root", str(root)] + [str(a) for a in apps]
+def run(root: Path, apps=(), head="", base="", allow_packages=True):
+    # Rule tests use a copy of the real standards; allow_packages switches APP010 between
+    # "exact pins allowed" and "no PyPI access: requirements.txt must be empty"
+    std = chk.yaml.safe_load(chk.DEFAULT_STANDARDS.read_text(encoding="utf-8"))
+    std["rules"]["APP010"]["allow_packages"] = allow_packages
+    std_file = root / "standards.json"
+    std_file.write_text(json.dumps(std))
+    args = ["--repo-root", str(root), "--standards", str(std_file)] + [str(a) for a in apps]
     if head:
         args += ["--head-branch", head, "--base-branch", base]
     out = root / "report.json"
@@ -286,7 +292,7 @@ def test_disabled_rule_is_skipped(tmp_path):
     std = (REPO / "skills/streamlit-app-standards/standards.yml").read_text()
     std = std.replace("  APP016:\n", "  APP016:\n    enabled: false\n")
     (root / "std.yml").write_text(std)
-    app = make_app(root, readme=False)
+    app = make_app(root, readme=False, req="")
     rc = chk.main(["--repo-root", str(root), "--standards", str(root / "std.yml"), "--json", str(root / "r.json"), str(app)])
     assert rc == 0 and not json.loads((root / "r.json").read_text())["warnings"]
 
@@ -302,3 +308,22 @@ def test_no_apps_passes(tmp_path):
     root = make_repo(tmp_path)
     rc, rep = run(root, [])
     assert rc == 0 and rep["apps"] == []
+
+
+def test_no_pypi_empty_requirements_pass(tmp_path):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, req="# no packages\n")], allow_packages=False)
+    assert rc == 0, rep
+
+
+@pytest.mark.parametrize("req", ["pandas==2.2.3\n", "altair\n"])
+def test_no_pypi_any_package_fails(tmp_path, req):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, req=req)], allow_packages=False)
+    assert rc == 1 and "APP010" in failed_rules(rep)
+
+
+def test_repo_standards_forbid_packages():
+    # The pilot has no PyPI integration: the real standards must keep APP010 strict
+    std = chk.yaml.safe_load(chk.DEFAULT_STANDARDS.read_text(encoding="utf-8"))
+    assert std["rules"]["APP010"]["allow_packages"] is False

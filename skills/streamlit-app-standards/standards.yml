@@ -44,9 +44,10 @@ rules:
     severity: error
     fix: Name the main file streamlit_app.py at the root of the app folder.
   APP010:
-    title: requirements.txt exists, every package pinned, streamlit not listed
+    title: requirements.txt exists and is empty (no PyPI access)
     severity: error
-    fix: Add requirements.txt with exact versions (package==1.2.3). Do not list streamlit, the container image already has it.
+    allow_packages: false            # no PyPI integration in the pilot; true = exact pins allowed
+    fix: Keep requirements.txt empty. The runtime already has streamlit, pandas and snowflake-snowpark-python; there is no PyPI access to install anything else.
   APP011:
     title: No get_active_session or _snowflake (container runtime)
     severity: error
