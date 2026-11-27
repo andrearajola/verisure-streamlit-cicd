@@ -19,6 +19,20 @@ Test data: `DB_STREAMLIT.DEMO_DATA.SALES (COUNTRY, MONTH, AMOUNT)` and
 
 ---
 
+## Presenting order
+Deck: `Verisure_Demo_CICD_DEV_ES.html` (Spanish). Live parts in GitHub and Snowflake.
+
+| # | What | Where |
+| --- | --- | --- |
+| 1 | Goal and end-to-end flow | deck sections 1-2 |
+| 2 | Two ways to develop and what the PR blocks | deck sections 3-4 |
+| 3 | **Part 1 live**: Snowsight, built with the skill | Snowsight + GitHub |
+| 4 | **Part 2 live**: VS Code, built without the skill, then fixed | VS Code + GitHub |
+| 5 | Skill CI/CD (deck section 5), then **Part 3 live** | GitHub + email |
+| 6 | Roles today vs target, how the DEPLOYER is chosen, next steps | deck sections 6-9 |
+
+Say at the start: *"Hoy enseñamos solo DEV. PRD funcionará igual, con un PR de dev a main y una aprobación en GitHub."*
+
 ## Preparation (once, before the demo)
 
 ### Snowsight
@@ -62,6 +76,8 @@ Test data: `DB_STREAMLIT.DEMO_DATA.SALES (COUNTRY, MONTH, AMOUNT)` and
 
 **Message:** "A FINANCE engineer never leaves Snowsight. CoCo knows our rules because of the skill."
 
+*Qué decir:* "El ingeniero de FINANCE trabaja solo en Snowsight. CoCo conoce nuestras reglas gracias a la skill, así que la app sale bien a la primera."
+
 1. In the Git workspace, create branch **`feature/finance-sales-trend`** from `dev`.
 2. Ask CoCo:
    > /streamlit-app-standards Create a new FINANCE app called sales_trend that shows monthly sales
@@ -79,11 +95,15 @@ Test data: `DB_STREAMLIT.DEMO_DATA.SALES (COUNTRY, MONTH, AMOUNT)` and
 
 **Takeaway:** the developer got it right the first time because the rules travel with CoCo.
 
+*Qué decir al ver el deploy:* "GitHub entra en Snowflake sin contraseñas (OIDC), crea la app en el schema de FINANCE y comprueba que todo está como debe. El ingeniero no puede crear apps: solo el CI/CD."
+
 ---
 
 ## Act 2: VS Code, built without the skill
 
 **Message:** "Not everyone uses the skill. The CI/CD makes sure that doesn't matter."
+
+*Qué decir:* "No todo el mundo usará la skill. Da igual: el PR aplica las mismas reglas y no deja hacer merge hasta que están bien."
 
 1. In VS Code: `git checkout dev && git pull && git checkout -b feature/comercial-channel-mix`.
 2. Create `apps/comercial/channel_mix/` "the old way" (copied from a notebook):
@@ -109,18 +129,35 @@ Test data: `DB_STREAMLIT.DEMO_DATA.SALES (COUNTRY, MONTH, AMOUNT)` and
 
 **Takeaway:** same rules locally, in CoCo and in GitHub. Bad code can't reach Snowflake.
 
+*Qué decir:* "Las mismas reglas en local, en CoCo y en GitHub. El código que no cumple no llega a Snowflake."
+
 ---
 
 ## Act 3 (optional): the skill has its own CI/CD
 
 **Message:** "When the platform team changes a rule, every developer gets it automatically."
 
-1. Small PR from `feature/platform-...` changing a rule text in `standards.yml` or `SKILL.md`.
+*Qué decir:* "La skill también tiene CI/CD. Cuando el equipo de plataforma cambia una regla, todos los desarrolladores la reciben solos, y nos llega un email."
+
+1. Branch `feature/platform-skill-demo` from `dev`. Small, safe change: in
+   `skills/streamlit-app-standards/standards.yml`, reword the `fix:` text of `APP018`
+   (for example add "Name the columns, e.g. SELECT country, amount").
+   Push and open the PR: `skill-checks` and `app-checks` re-check every app.
 2. Merge. **Actions » Sync skills**: new version published, `READ` granted to the engineer roles.
 3. Show the **email** (what changed, version, commit).
 4. Re-open CoCo (Snowsight or VS Code): the new version is the one in use.
 
 ---
+
+---
+
+## Close: roles (deck sections 6-9)
+*Qué decir:*
+- "Hoy, para empezar rápido, un solo rol de plataforma (`STREAMLIT_CICD_DEV`) es dueño de todo. Los equipos solo tienen el rol de ingeniero."
+- "El modelo objetivo, acordado con Manuel: por dominio, DEPLOYER (dueño del schema, solo el CI/CD), que hereda ENGINEER (desarrollar), que hereda el rol analyst que el equipo ya tiene. Todo cuelga de DBA."
+- "Las apps se comparten una a una con el rol analyst de cada equipo, en `app.yml`."
+- "El CI/CD no necesita una lista de roles: la carpeta de la app da el schema, y el dueño del schema es el DEPLOYER."
+- Open point: scope of `CALLER DATA READ` (account vs database).
 
 ## After the demo (reset)
 - To show it again, delete the two apps with a PR that removes their folders, then drop them
