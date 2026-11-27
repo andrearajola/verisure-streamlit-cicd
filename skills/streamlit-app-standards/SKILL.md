@@ -42,7 +42,7 @@ title: <Title shown in Snowsight>
 description: <one line>
 owner_email: <person responsible>
 rights: owner               # must be allowed for the team in config/teams.yml
-viewers: []                 # extra roles; the team engineer role already sees every team app
+viewers: []                 # roles of any team that can open this app, e.g. AZ-SF-<DOMAIN>-ANALYST
 ```
 
 ### 4. Code rules (container runtime on a compute pool)
