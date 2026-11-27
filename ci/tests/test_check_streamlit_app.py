@@ -141,11 +141,11 @@ def test_invalid_app_yml(tmp_path):
 
 def test_missing_fields_and_bad_values(tmp_path):
     root = make_repo(tmp_path)
-    yml = "name: other_name\ntitle: T\nowner_email: not-an-email\nrights: owner\nviewers: ['bad role!']\n"
+    yml = "name: other_name\ntitle: T\nowner_email: not-an-email\nrights: owner\n"
     rc, rep = run(root, [make_app(root, app_yml=yml)])
     got = failed_rules(rep)
-    # description missing, name mismatch, owner not allowed for FINANCE, bad email, bad viewer
-    assert {"APP004", "APP005", "APP006", "APP007", "APP008"} <= got
+    # description missing, name mismatch, owner not allowed for FINANCE, bad email
+    assert {"APP004", "APP005", "APP006", "APP007"} <= got
 
 
 def test_rights_value_invalid(tmp_path):

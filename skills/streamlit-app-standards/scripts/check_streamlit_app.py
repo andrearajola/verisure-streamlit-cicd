@@ -30,7 +30,6 @@ DEFAULT_STANDARDS = HERE.parent / "standards.yml"
 REPORT_MARKER = "<!-- streamlit-standards-report -->"
 
 APP_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{2,39}$")
-ROLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,254}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
 PIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9,._-]+\])?==[A-Za-z0-9.!+*_-]+(\s*;.*)?$")
 CONN_RE = re.compile(r"""st\.connection\(\s*["']snowflake(-callers-rights)?["']""")
@@ -166,13 +165,6 @@ class Checker:
             email = str(meta.get("owner_email") or "")
             self.report("APP007", label, [] if not email or EMAIL_RE.match(email) else [f"'{email}' is not a valid email"])
 
-            viewers = meta.get("viewers") or []
-            d = []
-            if not isinstance(viewers, list):
-                d.append("viewers must be a list of role names")
-            else:
-                d += [f"'{v}' is not a valid role name" for v in viewers if not ROLE_RE.match(str(v))]
-            self.report("APP008", label, d)
         rights = str(meta.get("rights") or "").strip().lower()
 
         # APP009 entry point

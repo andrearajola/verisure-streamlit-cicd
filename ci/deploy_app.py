@@ -148,7 +148,8 @@ def main() -> int:
     eai = ident(eai_name, "integration") if eai_name else None
     if not eai and a.verify_only is False and _has_packages(app_dir):
         sys.exit(f"{a.env} has no PyPI access (envs.yml pypi_eai is empty): requirements.txt must be empty")
-    viewers = [ident(str(v), "viewer role") for v in (meta.get("viewers") or [])]
+    # role_name: viewers can be SSO/SCIM roles with '-' (AZ-SF-<DOMAIN>-ANALYST); role_sql() quotes them
+    viewers = [role_name(str(v), "viewer role") for v in (meta.get("viewers") or [])]
     # envs.yml viewer_roles: roles that can open every app of this environment
     # teams.yml viewer_roles: roles that can open every app of this team (e.g. the domain's engineers)
     for extra in (env.get("viewer_roles") or []) + (team_cfg.get("viewer_roles") or []):

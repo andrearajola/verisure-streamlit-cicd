@@ -35,10 +35,6 @@ rules:
     title: owner_email is a valid email
     severity: error
     fix: Set owner_email to the email of the person responsible for the app.
-  APP008:
-    title: viewers are valid role names
-    severity: error
-    fix: List viewer roles as plain identifiers (letters, digits, _). The team USERS role already sees every app.
   APP009:
     title: Entry point streamlit_app.py exists
     severity: error
