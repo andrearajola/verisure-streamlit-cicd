@@ -5,7 +5,9 @@ Snowflake account: Verisure DEV (GitHub repo variable `SNOWFLAKE_ACCOUNT`), data
 
 ## How it works
 1. A developer builds an app in `apps/<team>/<app_name>/` with CoCo and the skill
-   `/streamlit-app-standards` (4 files: `streamlit_app.py`, `app.yml`, `requirements.txt`, `README.md`).
+   `/streamlit-app-standards` (6 files: `streamlit_app.py`, `app.yml`, `snowflake.yml`, `pyproject.toml`,
+   `.streamlit/config.toml`, `README.md`). The folder is a Snowsight Streamlit project, so the Git
+   workspace shows **Run** (private development app); deploys only go through the CI/CD.
 2. Pull request into `dev`: GitHub runs the standards checklist, posts a comment with what failed and
    how to fix it, and **blocks the merge** on errors (`app-checks`, `skill-checks`).
 3. Merge into `dev`: GitHub logs in to Snowflake with OIDC (no secrets) and deploys only the changed apps
@@ -18,7 +20,7 @@ Snowflake account: Verisure DEV (GitHub repo variable `SNOWFLAKE_ACCOUNT`), data
 | Service user (OIDC, GitHub environment `dev`) | `SVC_STREAMLIT_CICD_DEV` |
 | Compute pool (shared by all apps) | `SYSTEM_COMPUTE_POOL_CPU` |
 | Warehouse | `VWH_STREAMLIT` (per team in `config/teams.yml`) |
-| PyPI access | none: `requirements.txt` must be empty |
+| PyPI access | none: `pyproject.toml` dependencies must be empty (no `requirements.txt`) |
 | Access model | owner's rights |
 
 ## Layout
@@ -31,5 +33,5 @@ Snowflake account: Verisure DEV (GitHub repo variable `SNOWFLAKE_ACCOUNT`), data
 | `.github/workflows/` | `pr-checks`, `deploy-apps`, `demo-data` (manual), `connection-test` (manual) |
 | `snowflake/00_admin_setup.sql` | one-time admin setup (already run) |
 | `snowflake/90_demo_data.sql` | test data for the sample apps |
-| `demo/DEMO.md`, `demo/reference/` | demo script (Snowsight + VS Code) and reference code; never deployed |
+| `demo/DEMO.md`, `demo/reference/` | demo script (Snowsight + VS Code) and reference apps (`demo/reference/apps/`); never deployed |
 | `requirements-dev.txt`, `.vscode/` | local checklist and tests in VS Code |

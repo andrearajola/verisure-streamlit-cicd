@@ -1,0 +1,6 @@
+name: channel_mix
+title: Channel mix
+description: Revenue share per channel and region.
+owner_email: andrea.rajola@external.verisure.com
+rights: owner           # owner's rights: the app owner role reads the data
+viewers: []

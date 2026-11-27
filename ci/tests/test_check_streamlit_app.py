@@ -44,21 +44,60 @@ COMERCIAL:
 """
 
 
+TEST_ENVS = """\
+dev:
+  database: TEST_DB
+  compute_pool: TEST_POOL
+"""
+
+
 def make_repo(tmp_path: Path) -> Path:
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "teams.yml").write_text(TEST_TEAMS)
+    (tmp_path / "config" / "envs.yml").write_text(TEST_ENVS)
     return tmp_path
 
 
+def snowflake_yml(name="good_app", schema="FINANCE", warehouse="FINANCE_WH", extra=""):
+    return textwrap.dedent(f"""\
+        definition_version: 2
+        entities:
+          dev:
+            type: streamlit
+            identifier:
+              name: {name.upper()}
+              database: TEST_DB
+              schema: {schema}
+            main_file: streamlit_app.py
+            query_warehouse: {warehouse}
+            compute_pool: TEST_POOL
+            runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
+        """) + extra
+
+
+def pyproject(deps=None, name="good-app"):
+    lines = ", ".join(f'"{x}"' for x in (deps or []))
+    return f'[project]\nname = "{name}"\nversion = "0.1.0"\nrequires-python = ">=3.11"\ndependencies = [{lines}]\n'
+
+
 def make_app(root: Path, team="finance", name="good_app", rights="caller", code=None,
-             req="pandas==2.2.3\n", app_yml=None, readme=True, extra=None) -> Path:
+             deps=("pandas==2.2.3",), app_yml=None, readme=True, extra=None, sf_yml=None,
+             config=True) -> Path:
+    """deps=None: no pyproject.toml. sf_yml=None: a snowflake.yml that matches; False: none."""
     d = root / "apps" / team / name
     d.mkdir(parents=True)
     if code is not False:
         (d / "streamlit_app.py").write_text(code if code is not None else
                                             (GOOD_CALLER_APP if rights == "caller" else GOOD_OWNER_APP))
-    if req is not None:
-        (d / "requirements.txt").write_text(req)
+    if deps is not None:
+        (d / "pyproject.toml").write_text(pyproject(list(deps)))
+    if sf_yml is not False:
+        schema = "COMERCIAL" if team == "comercial" else "FINANCE"
+        (d / "snowflake.yml").write_text(sf_yml if sf_yml is not None else
+                                         snowflake_yml(name, schema, f"{schema}_WH"))
+    if config:
+        (d / ".streamlit").mkdir()
+        (d / ".streamlit" / "config.toml").write_text("[server]\nrunOnSave = true\n")
     if app_yml is None:
         app_yml = textwrap.dedent(f"""\
             name: {name}
@@ -81,7 +120,7 @@ def make_app(root: Path, team="finance", name="good_app", rights="caller", code=
 
 def run(root: Path, apps=(), head="", base="", allow_packages=True):
     # Rule tests use a copy of the real standards; allow_packages switches APP010 between
-    # "exact pins allowed" and "no PyPI access: requirements.txt must be empty"
+    # "exact pins allowed" and "no PyPI access: pyproject.toml dependencies must be empty"
     std = chk.yaml.safe_load(chk.DEFAULT_STANDARDS.read_text(encoding="utf-8"))
     std["rules"]["APP010"]["allow_packages"] = allow_packages
     std_file = root / "standards.json"
@@ -155,23 +194,38 @@ def test_rights_value_invalid(tmp_path):
     assert "APP006" in failed_rules(rep)
 
 
-def test_missing_entry_point_and_requirements(tmp_path):
+def test_missing_entry_point_and_pyproject(tmp_path):
     root = make_repo(tmp_path)
-    rc, rep = run(root, [make_app(root, code=False, req=None)])
+    rc, rep = run(root, [make_app(root, code=False, deps=None)])
     assert {"APP009", "APP010"} <= failed_rules(rep)
 
 
-@pytest.mark.parametrize("req", ["pandas\n", "pandas>=2.0\n", "streamlit==1.50.0\npandas==2.2.3\n"])
-def test_requirements_rules(tmp_path, req):
+@pytest.mark.parametrize("deps", [["pandas"], ["pandas>=2.0"], ["streamlit==1.50.0", "pandas==2.2.3"]])
+def test_dependency_rules(tmp_path, deps):
     root = make_repo(tmp_path)
-    rc, rep = run(root, [make_app(root, req=req)])
+    rc, rep = run(root, [make_app(root, deps=deps)])
     assert rc == 1 and "APP010" in failed_rules(rep)
 
 
-def test_requirements_extras_and_comments_ok(tmp_path):
+def test_dependency_extras_ok(tmp_path):
     root = make_repo(tmp_path)
-    rc, rep = run(root, [make_app(root, req="# deps\nsnowflake-snowpark-python[pandas]==1.30.0  # pinned\n\n")])
+    rc, rep = run(root, [make_app(root, deps=["snowflake-snowpark-python[pandas]==1.30.0"])])
     assert "APP010" not in failed_rules(rep)
+
+
+def test_requirements_txt_not_allowed(tmp_path):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, extra={"requirements.txt": ""})])
+    assert rc == 1 and "APP010" in failed_rules(rep)
+
+
+@pytest.mark.parametrize("content", ["[project\n", "[tool.x]\na = 1\n", "[project]\ndependencies = []\n"])
+def test_pyproject_invalid_or_incomplete(tmp_path, content):
+    root = make_repo(tmp_path)
+    app = make_app(root)
+    (app / "pyproject.toml").write_text(content)
+    rc, rep = run(root, [app])
+    assert rc == 1 and "APP010" in failed_rules(rep)
 
 
 def test_get_active_session_and_snowflake_module(tmp_path):
@@ -292,14 +346,14 @@ def test_disabled_rule_is_skipped(tmp_path):
     std = (REPO / "skills/streamlit-app-standards/standards.yml").read_text()
     std = std.replace("  APP016:\n", "  APP016:\n    enabled: false\n")
     (root / "std.yml").write_text(std)
-    app = make_app(root, readme=False, req="")
+    app = make_app(root, readme=False, deps=())
     rc = chk.main(["--repo-root", str(root), "--standards", str(root / "std.yml"), "--json", str(root / "r.json"), str(app)])
     assert rc == 0 and not json.loads((root / "r.json").read_text())["warnings"]
 
 
 def test_markdown_lists_failures_and_fix(tmp_path):
     root = make_repo(tmp_path)
-    run(root, [make_app(root, req="pandas\n")])
+    run(root, [make_app(root, deps=["pandas"])])
     md = (root / "report.md").read_text()
     assert chk.REPORT_MARKER in md and "FAILED" in md and "APP010" in md and "pinned" in md and "blocked" in md
 
@@ -310,16 +364,16 @@ def test_no_apps_passes(tmp_path):
     assert rc == 0 and rep["apps"] == []
 
 
-def test_no_pypi_empty_requirements_pass(tmp_path):
+def test_no_pypi_empty_dependencies_pass(tmp_path):
     root = make_repo(tmp_path)
-    rc, rep = run(root, [make_app(root, req="# no packages\n")], allow_packages=False)
+    rc, rep = run(root, [make_app(root, deps=())], allow_packages=False)
     assert rc == 0, rep
 
 
-@pytest.mark.parametrize("req", ["pandas==2.2.3\n", "altair\n"])
-def test_no_pypi_any_package_fails(tmp_path, req):
+@pytest.mark.parametrize("deps", [["pandas==2.2.3"], ["altair"]])
+def test_no_pypi_any_package_fails(tmp_path, deps):
     root = make_repo(tmp_path)
-    rc, rep = run(root, [make_app(root, req=req)], allow_packages=False)
+    rc, rep = run(root, [make_app(root, deps=deps)], allow_packages=False)
     assert rc == 1 and "APP010" in failed_rules(rep)
 
 
@@ -327,3 +381,75 @@ def test_repo_standards_forbid_packages():
     # The pilot has no PyPI integration: the real standards must keep APP010 strict
     std = chk.yaml.safe_load(chk.DEFAULT_STANDARDS.read_text(encoding="utf-8"))
     assert std["rules"]["APP010"]["allow_packages"] is False
+
+
+# -- APP019 snowflake.yml / APP020 .streamlit/config.toml ---------------------
+
+def test_snowflake_yml_missing(tmp_path):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, sf_yml=False)])
+    assert rc == 1 and "APP019" in failed_rules(rep)
+
+
+@pytest.mark.parametrize("old, new", [
+    ("name: GOOD_APP", "name: OTHER_APP"),
+    ("database: TEST_DB", "database: OTHER_DB"),
+    ("schema: FINANCE", "schema: COMERCIAL"),
+    ("main_file: streamlit_app.py", "main_file: app.py"),
+    ("query_warehouse: FINANCE_WH", "query_warehouse: BIG_WH"),
+    ("compute_pool: TEST_POOL", "compute_pool: OTHER_POOL"),
+    ("SYSTEM$ST_CONTAINER_RUNTIME_PY3_11", "SYSTEM$WAREHOUSE_RUNTIME"),
+    ("definition_version: 2", "definition_version: 1"),
+    ("  dev:", "  prd:"),
+])
+def test_snowflake_yml_mismatch(tmp_path, old, new):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, sf_yml=snowflake_yml().replace(old, new))])
+    assert rc == 1 and "APP019" in failed_rules(rep), rep
+
+
+def test_snowflake_yml_grants_not_allowed(tmp_path):
+    root = make_repo(tmp_path)
+    yml = snowflake_yml(extra="    grants:\n      - privilege: USAGE\n        role: ANALYST\n")
+    rc, rep = run(root, [make_app(root, sf_yml=yml)])
+    assert rc == 1 and "APP019" in failed_rules(rep)
+
+
+def test_snowflake_yml_with_mixins_passes(tmp_path):
+    # The shape Snowsight writes after Settings: shared values in a mixin
+    yml = textwrap.dedent("""\
+        definition_version: 2
+        mixins:
+          streamlit_shared:
+            main_file: streamlit_app.py
+            query_warehouse: finance_wh
+            compute_pool: TEST_POOL
+            runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
+        entities:
+          dev:
+            type: streamlit
+            identifier: {name: good_app, database: test_db, schema: finance}
+            meta:
+              use_mixins: [streamlit_shared]
+        """)
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, sf_yml=yml)])
+    assert "APP019" not in failed_rules(rep), rep
+
+
+def test_snowflake_yml_invalid_yaml(tmp_path):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, sf_yml="entities: [unclosed\n")])
+    assert rc == 1 and "APP019" in failed_rules(rep)
+
+
+def test_streamlit_config_missing_is_warning(tmp_path):
+    root = make_repo(tmp_path)
+    rc, rep = run(root, [make_app(root, config=False)])
+    assert rc == 0 and "APP020" in {f["rule"] for f in rep["warnings"]}
+
+
+def test_repo_apps_pass(tmp_path):
+    # The apps in the repo are real Snowsight projects and must pass with the real config
+    apps = sorted(str(p) for p in (REPO / "apps").glob("*/*") if p.is_dir())
+    assert apps and chk.main(["--repo-root", str(REPO), "--json", str(tmp_path / "r.json")] + apps) == 0
