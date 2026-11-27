@@ -24,6 +24,10 @@ try:
     import yaml
 except ImportError:  # pragma: no cover
     sys.exit("PyYAML is required: pip install pyyaml")
+try:
+    import tomllib
+except ImportError:  # pragma: no cover
+    sys.exit("Python 3.11 or later is required (tomllib)")
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_STANDARDS = HERE.parent / "standards.yml"
@@ -55,10 +59,11 @@ class Finding:
 
 
 class Checker:
-    def __init__(self, repo_root: Path, standards: dict, teams: dict):
+    def __init__(self, repo_root: Path, standards: dict, teams: dict, envs: dict | None = None):
         self.root = repo_root
         self.rules = standards.get("rules", {})
         self.teams = teams or {}
+        self.envs = envs or {}
         self.by_folder = {str(v.get("folder", k)).lower(): (k, v) for k, v in self.teams.items()}
         self.findings: list[Finding] = []
         self.checked: list[str] = []
@@ -171,25 +176,49 @@ class Checker:
         main = app_dir / "streamlit_app.py"
         self.report("APP009", label, [] if main.is_file() else ["streamlit_app.py not found"])
 
-        # APP010 requirements
-        req = app_dir / "requirements.txt"
+        # APP010 dependencies: pyproject.toml only (requirements.txt is not used)
         d = []
         allow_packages = self.rule("APP010").get("allow_packages", True)
-        if not req.is_file():
-            d.append("requirements.txt not found")
+        if (app_dir / "requirements.txt").is_file():
+            d.append("requirements.txt is not used: declare dependencies in pyproject.toml")
+        pyproject = app_dir / "pyproject.toml"
+        if not pyproject.is_file():
+            d.append("pyproject.toml not found")
         else:
-            for n, raw in enumerate(req.read_text(encoding="utf-8").splitlines(), 1):
-                line = raw.split("#", 1)[0].strip()
-                if not line:
-                    continue
-                pkg = re.split(r"[\[=<>!~; ]", line, maxsplit=1)[0].lower()
-                if not allow_packages:
-                    d.append(f"line {n}: '{line}': no PyPI access in this environment, requirements.txt must be empty")
-                elif pkg == "streamlit":
-                    d.append(f"line {n}: do not list streamlit (the container runtime provides it)")
-                elif not PIN_RE.match(line):
-                    d.append(f"line {n}: '{line}' is not pinned with ==")
+            try:
+                project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project")
+            except tomllib.TOMLDecodeError as exc:
+                project, d = None, d + [f"pyproject.toml is not valid TOML: {exc}"]
+            if project is not None and not isinstance(project, dict):
+                project = None
+                d.append("pyproject.toml: [project] must be a table")
+            if isinstance(project, dict):
+                for key in ("name", "version"):
+                    if not str(project.get(key) or "").strip():
+                        d.append(f"pyproject.toml: [project] {key} is missing (required by uv)")
+                deps = project.get("dependencies", [])
+                if not isinstance(deps, list):
+                    d.append("pyproject.toml: dependencies must be a list")
+                    deps = []
+                for dep in deps:
+                    dep = str(dep).strip()
+                    pkg = re.split(r"[\[=<>!~; ]", dep, maxsplit=1)[0].lower()
+                    if not allow_packages:
+                        d.append(f"'{dep}': no PyPI access in this environment, dependencies must be empty")
+                    elif pkg == "streamlit":
+                        d.append(f"'{dep}': do not list streamlit (the container runtime provides it)")
+                    elif not PIN_RE.match(dep):
+                        d.append(f"'{dep}' is not pinned with ==")
+            elif project is None and not d:
+                d.append("pyproject.toml: [project] table is missing")
         self.report("APP010", label, d)
+
+        # APP019 snowflake.yml (Snowsight project): must match app.yml, teams.yml and envs.yml
+        self.report("APP019", label, self._snowflake_yml(app_dir, meta, team_key, team_cfg))
+
+        # APP020 .streamlit/config.toml (created by Snowsight for every Streamlit project)
+        self.report("APP020", label, [] if (app_dir / ".streamlit" / "config.toml").is_file()
+                    else [".streamlit/config.toml not found"])
 
         # Source scan
         files = [p for p in sorted(app_dir.rglob("*")) if p.is_file()]
@@ -240,6 +269,64 @@ class Checker:
         d = [f"{p.name}:{n}" for p, src in py_src.items()
              for n, line in enumerate(src.splitlines(), 1) if re.search(r"(?i)\bselect\s+\*", line)]
         self.report("APP018", label, d)
+
+    def _snowflake_yml(self, app_dir: Path, meta: dict, team_key: str | None, team_cfg: dict) -> list[str]:
+        """APP019: snowflake.yml is a Snowflake CLI project v2 with one streamlit target per environment
+        (key = envs.yml key) that matches where and how the CI/CD deploys the app."""
+        f = app_dir / "snowflake.yml"
+        if not f.is_file():
+            return ["snowflake.yml not found (Snowsight needs it to show Run)"]
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            return [f"snowflake.yml is not valid YAML: {exc}"]
+        if not isinstance(doc, dict):
+            return ["snowflake.yml: top level must be a mapping"]
+        d: list[str] = []
+        if str(doc.get("definition_version")) != "2":
+            d.append("definition_version must be 2")
+        mixins = doc.get("mixins") or {}
+        entities = doc.get("entities") or {}
+        if not isinstance(entities, dict) or not isinstance(mixins, dict):
+            return d + ["entities and mixins must be mappings"]
+        targets = {}
+        for key, ent in entities.items():
+            if not isinstance(ent, dict) or ent.get("type") != "streamlit":
+                continue
+            merged: dict = {}
+            for m in (ent.get("meta") or {}).get("use_mixins") or []:   # Snowsight writes shared settings as mixins
+                if isinstance(mixins.get(m), dict):
+                    merged.update(mixins[m])
+            merged.update({k: v for k, v in ent.items() if k != "meta"})
+            targets[str(key)] = merged
+        if not targets:
+            return d + ["no entity with type: streamlit"]
+        for key in targets:
+            if key not in self.envs:
+                d.append(f"target '{key}' is not an environment in config/envs.yml ({', '.join(self.envs) or 'none'})")
+        app_name = str(meta.get("name") or app_dir.name)
+        warehouse = str(meta.get("warehouse") or team_cfg.get("warehouse") or "")
+        for env_key, env in self.envs.items():
+            t = targets.get(str(env_key))
+            if t is None:
+                d.append(f"no streamlit target '{env_key}' (one per environment in config/envs.yml)")
+                continue
+            ident = t.get("identifier") if isinstance(t.get("identifier"), dict) else {"name": t.get("identifier")}
+            expect = {"name": app_name, "database": (env or {}).get("database"), "schema": team_key}
+            for k, want in expect.items():
+                got = ident.get(k)
+                if want and str(got or "").upper() != str(want).upper():
+                    d.append(f"{env_key}: identifier.{k} is '{got}', expected '{str(want).upper()}'")
+            if t.get("main_file") != "streamlit_app.py":
+                d.append(f"{env_key}: main_file is '{t.get('main_file')}', expected 'streamlit_app.py'")
+            for k, want in (("query_warehouse", warehouse), ("compute_pool", (env or {}).get("compute_pool"))):
+                if want and str(t.get(k) or "").upper() != str(want).upper():
+                    d.append(f"{env_key}: {k} is '{t.get(k)}', expected '{want}'")
+            if "CONTAINER_RUNTIME" not in str(t.get("runtime_name") or "").upper():
+                d.append(f"{env_key}: runtime_name is '{t.get('runtime_name')}', expected a container runtime")
+            if t.get("grants"):
+                d.append(f"{env_key}: grants are not allowed here (Share in Snowsight); list roles in app.yml viewers")
+        return d
 
     def _callers_rights(self, rights: str, main: Path, py_src: dict) -> list[str]:
         uses_callers = any("snowflake-callers-rights" in s for s in py_src.values())
@@ -333,7 +420,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"config/teams.yml not found under {root}", file=sys.stderr)
         return 2
     standards = yaml.safe_load(Path(a.standards).read_text(encoding="utf-8")) or {}
-    chk = Checker(root, standards, yaml.safe_load(teams_file.read_text(encoding="utf-8")) or {})
+    envs_file = root / "config" / "envs.yml"
+    envs = yaml.safe_load(envs_file.read_text(encoding="utf-8")) or {} if envs_file.is_file() else {}
+    chk = Checker(root, standards, yaml.safe_load(teams_file.read_text(encoding="utf-8")) or {}, envs)
     chk.check_branch(a.head_branch, a.base_branch)
     for app in a.apps:
         p = Path(app)

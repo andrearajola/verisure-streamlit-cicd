@@ -1,0 +1,16 @@
+definition_version: 2
+entities:
+  dev:
+    type: streamlit
+    identifier:
+      name: CHANNEL_MIX
+      database: DB_STREAMLIT
+      schema: COMERCIAL
+    main_file: streamlit_app.py
+    query_warehouse: VWH_STREAMLIT
+    compute_pool: SYSTEM_COMPUTE_POOL_CPU
+    runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
+    artifacts:
+      - streamlit_app.py
+      - pyproject.toml
+      - .streamlit/config.toml

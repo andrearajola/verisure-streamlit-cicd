@@ -85,10 +85,13 @@ Say at the start: *"Hoy enseñamos solo DEV. PRD funcionará igual, con un PR de
    > Only create the files; don't deploy it.
 3. Show what CoCo does because of the skill:
    - asks/confirms team, name and access model (owner's rights);
-   - creates the 4 files: `streamlit_app.py`, `app.yml`, `requirements.txt` (empty), `README.md`;
+   - creates the 6 files: `streamlit_app.py`, `app.yml`, `snowflake.yml`, `pyproject.toml` (no dependencies),
+     `.streamlit/config.toml`, `README.md`;
+   - the folder becomes a Snowsight Streamlit project: open `streamlit_app.py` and press **Run** to try it
+     (a private development app, nothing is deployed). *"Lo puede probar, pero no desplegar."*
    - uses `st.connection("snowflake")`, `@st.cache_data`, named columns, no `USE ROLE`;
    - **does not deploy**: it stops and says to push and open the PR (the engineer role can't create apps).
-   If CoCo's code differs a lot, paste `demo/reference/finance_sales_trend.py`.
+   Backup if CoCo's result differs a lot: copy the 6 files from `demo/reference/apps/finance/sales_trend/`.
 4. Commit and push from the workspace. In GitHub, open the PR into `dev`.
 5. **PR comment: PASSED**, checks `app-checks` and `skill-checks` green.
 6. Merge. Show **Actions » Deploy Streamlit apps**: OIDC login (no secrets), app created,
@@ -110,7 +113,7 @@ Say at the start: *"Hoy enseñamos solo DEV. PRD funcionará igual, con un PR de
 1. In VS Code: `git checkout dev && git pull && git checkout -b feature/comercial-channel-mix`.
 2. Create `apps/comercial/channel_mix/` "the old way" (copied from a notebook):
    - `streamlit_app.py`: paste `demo/reference/comercial_channel_mix_broken.py`
-   - `requirements.txt`: `plotly`
+   - `requirements.txt`: `plotly` (and no `snowflake.yml` / `pyproject.toml`)
    - `app.yml`:
      ```yaml
      name: channel_mix
@@ -118,14 +121,16 @@ Say at the start: *"Hoy enseñamos solo DEV. PRD funcionará igual, con un PR de
      rights: owner
      ```
 3. Commit, push, open the PR into `dev`.
-4. **PR comment: FAILED, 5 errors, merge blocked.** Walk through the "How to fix" column:
-   `get_active_session`, `USE WAREHOUSE`, `plotly` (no PyPI access), missing `owner_email` /
-   `description`, no `st.connection`. Try **Merge**: GitHub refuses.
+4. **PR comment: FAILED, 6 errors, merge blocked.** Walk through the "How to fix" column:
+   `get_active_session`, `USE WAREHOUSE`, `plotly` / `requirements.txt` (no PyPI access, use
+   `pyproject.toml`), missing `owner_email` / `description`, no `st.connection`, no `snowflake.yml`.
+   Try **Merge**: GitHub refuses.
 5. Ask CoCo in the VS Code terminal:
    > /streamlit-app-standards My PR for apps/comercial/channel_mix failed. Fix it and run the checklist. Don't deploy.
-6. Show CoCo rewriting the app (reference: `demo/reference/comercial_channel_mix.py`), emptying
-   `requirements.txt` (plotly → `st.bar_chart`), completing `app.yml`, adding `README.md`,
+6. Show CoCo rewriting the app (plotly → `st.bar_chart`), deleting `requirements.txt`, adding
+   `pyproject.toml`, `snowflake.yml`, `.streamlit/config.toml` and `README.md`, completing `app.yml`,
    and running the checklist locally until **PASSED**.
+   Backup: `rm apps/comercial/channel_mix/requirements.txt && cp -R demo/reference/apps/comercial/channel_mix/. apps/comercial/channel_mix/`
 7. Push to the same branch. **The same PR comment changes to PASSED.** Merge, deploy, open
    `DB_STREAMLIT.COMERCIAL.CHANNEL_MIX` in Snowsight.
 

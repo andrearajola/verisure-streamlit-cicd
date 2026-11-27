@@ -15,7 +15,10 @@ Only write and change the files in `apps/<team>/<app_name>/`. **Never create or 
 Snowflake**: no `CREATE STREAMLIT`, `ALTER STREAMLIT`, `snow streamlit deploy`, or any deploy step from
 another Streamlit skill. Developer roles don't have that permission; the app reaches
 `DB_STREAMLIT.<TEAM>` only through the PR and the CI/CD.
-- To try the code, run it in the workspace (or locally) and test the queries; that needs no deploy.
+- To try the code, use **Run** in the Snowsight workspace (a private development app that only the
+  developer sees) or run it locally; that needs no deploy.
+- Don't use the **Deploy** or **Share** buttons in Snowsight: deploys go through the CI/CD, and sharing
+  is `viewers` in `app.yml`. Share writes `grants` into `snowflake.yml`, which the checklist rejects.
 - When the files are ready and the checklist passes, stop and tell the developer to commit, push and
   open the PR into `dev`.
 
@@ -24,9 +27,9 @@ another Streamlit skill. Developer roles don't have that permission; the app rea
 ### 1. Find the context
 - Work from the root of the `verisure-streamlit-cicd` repo (it has `config/teams.yml`). The
   developer may be in a Snowsight Git workspace or in VS Code: the files and rules are the same.
-- Ask which **team** owns the app and read `config/teams.yml`: the team folder, the allowed
-  access model (`allowed_rights`) and the warehouse. If the team is missing, stop: the platform
-  team must add it first.
+- Ask which **team** owns the app and read `config/teams.yml` (team folder, allowed access model
+  `allowed_rights`, warehouse) and `config/envs.yml` (database and compute pool per environment).
+  If the team is missing, stop: the platform team must add it first.
 - Ask for the app name. It must be `snake_case`, 3-40 characters. This becomes the Streamlit
   object name `DB_STREAMLIT.<TEAM>.<APP_NAME>`.
 - Test data for the pilot: `DB_STREAMLIT.DEMO_DATA.SALES (COUNTRY, MONTH, AMOUNT)` and
@@ -39,12 +42,11 @@ Connect with `st.connection("snowflake")`.
 If a team later allows `caller` (each viewer sees only their own rows), the extra rules in
 section 4 apply.
 
-### 3. Scaffold `apps/<team>/<app_name>/`
+### 3. Scaffold `apps/<team>/<app_name>/` (6 files)
+The folder must be a Snowsight Streamlit project, so the workspace shows **Run**.
 - `streamlit_app.py`: the entry point.
-- `requirements.txt`: **empty**. There is no PyPI access in this environment; the runtime
-  already has `streamlit`, `pandas` and `snowflake-snowpark-python`. Use only those.
 - `README.md`: what the app does, the data used, and a contact.
-- `app.yml`:
+- `app.yml` (Verisure rules, read by the CI/CD):
 ```yaml
 name: <app_name>            # same as the folder
 title: <Title shown in Snowsight>
@@ -53,6 +55,43 @@ owner_email: <person responsible>
 rights: owner               # must be allowed for the team in config/teams.yml
 viewers: []                 # roles of any team that can open this app, e.g. AZ-SF-<DOMAIN>-ANALYST
 ```
+- `snowflake.yml` (Snowsight project; one target per environment in `config/envs.yml`, key `dev`).
+  Fill the values from `envs.yml` and `teams.yml`; the checklist compares them:
+```yaml
+definition_version: 2
+entities:
+  dev:
+    type: streamlit
+    identifier:
+      name: <APP_NAME>              # app name in upper case
+      database: DB_STREAMLIT        # envs.yml dev.database
+      schema: <TEAM>                # team key in teams.yml
+    main_file: streamlit_app.py
+    query_warehouse: VWH_STREAMLIT  # team warehouse in teams.yml
+    compute_pool: SYSTEM_COMPUTE_POOL_CPU   # envs.yml dev.compute_pool
+    runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
+    artifacts:
+      - streamlit_app.py
+      - pyproject.toml
+      - .streamlit/config.toml
+```
+- `pyproject.toml`: **no dependencies**. There is no PyPI access in this environment; the runtime
+  already has `streamlit`, `pandas` and `snowflake-snowpark-python`. Use only those. Don't create
+  `requirements.txt`.
+```toml
+[project]
+name = "<app-name>"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+```
+- `.streamlit/config.toml`: Streamlit settings; it can stay almost empty:
+```toml
+[server]
+runOnSave = true
+```
+If Snowsight rewrites `snowflake.yml` (it does when you open Settings: shared values move to a
+`streamlit_shared` mixin), that's fine as long as the values still match; run the checklist again.
 
 ### 4. Code rules (container runtime on a compute pool)
 - Connect with `st.connection(...)`. Never use `get_active_session()` or `_snowflake`: they aren't
@@ -76,7 +115,8 @@ python skills/streamlit-app-standards/scripts/check_streamlit_app.py apps/<team>
 ```
 If the skill was installed from the catalog, the script is in this skill's folder: run it with
 `--repo-root <path to the repo>`. If you can't run Python (for example in a Snowsight workspace),
-review the files against sections 3 and 4 yourself; the PR runs the same checklist.
+review the files against sections 3 and 4 yourself (in particular `snowflake.yml` and
+`pyproject.toml`); the PR runs the same checklist.
 
 - **PASSED** → commit, push the branch and open the PR into `dev`.
 - **FAILED** → fix every error using the "How to fix" column, then run it again. Never tell the

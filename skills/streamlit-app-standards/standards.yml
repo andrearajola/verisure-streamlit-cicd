@@ -40,10 +40,10 @@ rules:
     severity: error
     fix: Name the main file streamlit_app.py at the root of the app folder.
   APP010:
-    title: requirements.txt exists and is empty (no PyPI access)
+    title: pyproject.toml exists and its dependencies are empty (no PyPI access)
     severity: error
     allow_packages: false            # no PyPI integration in the pilot; true = exact pins allowed
-    fix: Keep requirements.txt empty. The runtime already has streamlit, pandas and snowflake-snowpark-python; there is no PyPI access to install anything else.
+    fix: Keep dependencies = [] in pyproject.toml (with name and version) and delete requirements.txt. The runtime already has streamlit, pandas and snowflake-snowpark-python; there is no PyPI access to install anything else.
   APP011:
     title: No get_active_session or _snowflake (container runtime)
     severity: error
@@ -78,6 +78,14 @@ rules:
     title: Avoid SELECT *
     severity: warning
     fix: Select only the columns the app needs (less data, faster, and safer when columns are added).
+  APP019:
+    title: snowflake.yml matches the app (Snowsight project, Run button)
+    severity: error
+    fix: Keep one streamlit target per environment (key dev) with identifier name = app name, database = envs.yml database, schema = team, main_file streamlit_app.py, the team warehouse, the envs.yml compute pool and a container runtime. No grants (share through viewers in app.yml). If Snowsight changed the file (Settings or Share), undo those changes.
+  APP020:
+    title: .streamlit/config.toml exists
+    severity: warning
+    fix: Add .streamlit/config.toml (Snowsight creates it for every Streamlit project; it can stay almost empty).
   BR001:
     title: Branch naming
     severity: error

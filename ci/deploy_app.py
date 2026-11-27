@@ -14,7 +14,7 @@
 Optional settings per environment in config/envs.yml (default = one role and one pool per team):
   deploy_role    one role creates and owns every app (no per-team OWNER / USERS roles)
   compute_pool   one compute pool shared by every app
-  pypi_eai       external access integration for PyPI; "" = none (requirements.txt must be empty)
+  pypi_eai       external access integration for PyPI; "" = none (pyproject.toml dependencies must be empty)
   create_schema  true = the deploy role creates the team schema and stage if missing
   viewer_roles   roles that can open every app of the environment (names with '-' are quoted)
 
@@ -32,6 +32,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -147,7 +148,7 @@ def main() -> int:
     eai_name = env.get("pypi_eai", "STREAMLIT_PYPI_EAI")
     eai = ident(eai_name, "integration") if eai_name else None
     if not eai and a.verify_only is False and _has_packages(app_dir):
-        sys.exit(f"{a.env} has no PyPI access (envs.yml pypi_eai is empty): requirements.txt must be empty")
+        sys.exit(f"{a.env} has no PyPI access (envs.yml pypi_eai is empty): pyproject.toml dependencies must be empty")
     # role_name: viewers can be SSO/SCIM roles with '-' (AZ-SF-<DOMAIN>-ANALYST); role_sql() quotes them
     viewers = [role_name(str(v), "viewer role") for v in (meta.get("viewers") or [])]
     # envs.yml viewer_roles: roles that can open every app of this environment
@@ -186,10 +187,15 @@ def main() -> int:
 
 
 def _has_packages(app_dir: Path) -> bool:
+    """True if the app declares packages (pyproject.toml dependencies, or a non-empty requirements.txt)."""
     req = app_dir / "requirements.txt"
-    if not req.exists():
+    if req.exists() and any(l.split("#")[0].strip() for l in req.read_text(encoding="utf-8").splitlines()):
+        return True
+    pyproject = app_dir / "pyproject.toml"
+    if not pyproject.exists():
         return False
-    return any(l.split("#")[0].strip() for l in req.read_text(encoding="utf-8").splitlines())
+    deps = (tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project") or {}).get("dependencies") or []
+    return bool(deps)
 
 
 def deploy(snow, app_dir, fqn, db, team, app, pool, wh, eai, viewers, meta, rights, commit,
