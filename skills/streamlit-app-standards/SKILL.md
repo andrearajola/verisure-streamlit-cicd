@@ -10,6 +10,15 @@ The rules live in `standards.yml` (next to this file). The checklist script
 `scripts/check_streamlit_app.py` applies them. **GitHub Actions runs the same script on every
 pull request and blocks the merge on any error**, so a PASS here means a PASS in CI.
 
+## Never deploy: the CI/CD does it
+Only write and change the files in `apps/<team>/<app_name>/`. **Never create or replace the app in
+Snowflake**: no `CREATE STREAMLIT`, `ALTER STREAMLIT`, `snow streamlit deploy`, or any deploy step from
+another Streamlit skill. Developer roles don't have that permission; the app reaches
+`DB_STREAMLIT.<TEAM>` only through the PR and the CI/CD.
+- To try the code, run it in the workspace (or locally) and test the queries; that needs no deploy.
+- When the files are ready and the checklist passes, stop and tell the developer to commit, push and
+  open the PR into `dev`.
+
 ## Workflow
 
 ### 1. Find the context

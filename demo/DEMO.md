@@ -82,10 +82,12 @@ Say at the start: *"Hoy enseñamos solo DEV. PRD funcionará igual, con un PR de
 2. Ask CoCo:
    > /streamlit-app-standards Create a new FINANCE app called sales_trend that shows monthly sales
    > per country from DB_STREAMLIT.DEMO_DATA.SALES, with a country filter, two KPIs and a line chart.
+   > Only create the files; don't deploy it.
 3. Show what CoCo does because of the skill:
    - asks/confirms team, name and access model (owner's rights);
    - creates the 4 files: `streamlit_app.py`, `app.yml`, `requirements.txt` (empty), `README.md`;
-   - uses `st.connection("snowflake")`, `@st.cache_data`, named columns, no `USE ROLE`.
+   - uses `st.connection("snowflake")`, `@st.cache_data`, named columns, no `USE ROLE`;
+   - **does not deploy**: it stops and says to push and open the PR (the engineer role can't create apps).
    If CoCo's code differs a lot, paste `demo/reference/finance_sales_trend.py`.
 4. Commit and push from the workspace. In GitHub, open the PR into `dev`.
 5. **PR comment: PASSED**, checks `app-checks` and `skill-checks` green.
@@ -120,7 +122,7 @@ Say at the start: *"Hoy enseñamos solo DEV. PRD funcionará igual, con un PR de
    `get_active_session`, `USE WAREHOUSE`, `plotly` (no PyPI access), missing `owner_email` /
    `description`, no `st.connection`. Try **Merge**: GitHub refuses.
 5. Ask CoCo in the VS Code terminal:
-   > /streamlit-app-standards My PR for apps/comercial/channel_mix failed. Fix it and run the checklist.
+   > /streamlit-app-standards My PR for apps/comercial/channel_mix failed. Fix it and run the checklist. Don't deploy.
 6. Show CoCo rewriting the app (reference: `demo/reference/comercial_channel_mix.py`), emptying
    `requirements.txt` (plotly → `st.bar_chart`), completing `app.yml`, adding `README.md`,
    and running the checklist locally until **PASSED**.
